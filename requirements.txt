@@ -1,0 +1,6 @@
+pydub==0.25.1
+python-telegram-bot==21.10
+spotipy==2.25.0
+yandex_music==2.2.0
+yt_dlp==2025.1.26
+ytmusicapi==1.9.1
