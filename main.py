@@ -3,9 +3,9 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, MessageHandler
 from telegram.ext import Application, filters
-from YT import get_song_link as get_yt_song_link
-from Yandex import get_song_link as get_yandex_song_link
-from audio_utils import get_raw_file as get_raw_file
+from YT import get_song_link as get_yt_song_link, get_song_info_from_url as get_yt_song_info
+from Yandex import get_song_link as get_yandex_song_link, get_song_info_from_url as get_yandex_song_info
+# from audio_utils import get_raw_file as get_raw_file
 
 SETTINGS_FILE = 'settings.json'
 
@@ -106,30 +106,69 @@ async def process_search(update: Update, context: CallbackContext, search_query:
     user_id = str(update.effective_user.id)
     preferences = user_preferences.get(user_id, ['yt', 'yandex', 'raw'])
 
-    try:
-        response = []
-        if 'yt' in preferences:
+    # Check if input is a URL
+    is_url = search_query.startswith(('http://', 'https://'))
+    
+    response = []
+    
+    # If the input is a URL, extract song info first
+    if is_url:
+        song_info = None
+        song_name = None
+        
+        try:
+            # Determine URL type and get song info
+            if 'music.youtube.com' in search_query or 'youtube.com' in search_query:
+                song_info = get_yt_song_info(search_query)
+            elif 'music.yandex.ru' in search_query:
+                song_info = get_yandex_song_info(search_query)
+                
+            # Check if we got a valid response
+            if isinstance(song_info, dict) and 'title' in song_info and 'artist' in song_info:
+                song_name = f"{song_info['artist']} - {song_info['title']}"
+                response.append(f"🎵 Found: {song_name}")
+                search_query = song_name  # Use the extracted song name for other services
+            else:
+                response.append(f"❌ Could not extract song info: {song_info}")
+                # Return early if we couldn't extract song info
+                await update.message.reply_text("\n".join(response), disable_web_page_preview=True)
+                return
+        except Exception as e:
+            response.append(f"❌ Error extracting song info: {str(e)}")
+            await update.message.reply_text("\n".join(response), disable_web_page_preview=True)
+            return
+    
+    # Get links from preferred services
+    if 'yt' in preferences:
+        try:
             yt_link = get_yt_song_link(search_query)
             response.append(f"YouTube: {yt_link}")
-        if 'yandex' in preferences:
+        except Exception as e:
+            response.append(f"YouTube: Error - {str(e)}")
+    
+    if 'yandex' in preferences:
+        try:
             yandex_link = get_yandex_song_link(search_query)
             response.append(f"Yandex: {yandex_link}")
-        if 'raw' in preferences:
-            if not yt_link:
-                response.append("No results found for raw MP3.")
+        except Exception as e:
+            error_msg = str(e)
+            if "451" in error_msg or "Unavailable For Legal Reasons" in error_msg:
+                response.append("Yandex: Service unavailable in your region due to legal restrictions")
             else:
-                raw_file = get_raw_file(yt_link)
-                await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(raw_file, 'rb'), caption="Here is your MP3 file!")
-                os.remove(raw_file)
+                response.append(f"Yandex: Error - {error_msg}")
+    
+    # if 'raw' in preferences:
+    #     if not yt_link:
+    #         response.append("No results found for raw MP3.")
+    #     else:
+    #         # raw_file = get_raw_file(yt_link)
+    #         await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(raw_file, 'rb'), caption="Here is your MP3 file!")
+    #         os.remove(raw_file)
 
-        if not response:
-            response = ["No services selected."]
-        else:
-            response = "\n".join(response)
-    except ValueError:
-        response = "Song not found"
-
-    await update.message.reply_text(response, disable_web_page_preview=True)
+    if not response:
+        response = ["No services selected."]
+    
+    await update.message.reply_text("\n".join(response), disable_web_page_preview=True)
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
     # Check if we're waiting for a song
