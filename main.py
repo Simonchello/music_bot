@@ -5,6 +5,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQuery
 from telegram.ext import Application, filters
 from YT import get_song_link as get_yt_song_link, get_song_info_from_url as get_yt_song_info
 from Yandex import get_song_link as get_yandex_song_link, get_song_info_from_url as get_yandex_song_info
+from Spotify import get_song_link as get_spotify_song_link, get_song_info_from_url as get_spotify_song_info
 # from audio_utils import get_raw_file as get_raw_file
 
 SETTINGS_FILE = 'settings.json'
@@ -38,6 +39,10 @@ async def settings(update: Update, context: CallbackContext) -> None:
             callback_data=f"toggle_yandex"
         ),
         InlineKeyboardButton(
+            text=f"✅ Spotify" if 'spotify' in preferences else "❌ Spotify",
+            callback_data=f"toggle_spotify"
+        ),
+        InlineKeyboardButton(
             text=f"✅ Raw MP3" if 'raw' in preferences else "❌ Raw MP3",
             callback_data=f"toggle_raw"
         )
@@ -49,7 +54,7 @@ async def settings(update: Update, context: CallbackContext) -> None:
 async def toggle_service(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     user_id = str(query.from_user.id)
-    preferences = user_preferences.get(user_id, ['yt', 'yandex', 'raw'])
+    preferences = user_preferences.get(user_id, ['yt', 'yandex', 'spotify', 'raw'])
 
     # Determine which service to toggle
     if query.data == "toggle_yt":
@@ -62,6 +67,11 @@ async def toggle_service(update: Update, context: CallbackContext) -> None:
             preferences.remove('yandex')
         else:
             preferences.append('yandex')
+    elif query.data == "toggle_spotify":
+        if 'spotify' in preferences:
+            preferences.remove('spotify')
+        else:
+            preferences.append('spotify')
     elif query.data == "toggle_raw":
         if 'raw' in preferences:
             preferences.remove('raw')
@@ -81,6 +91,10 @@ async def toggle_service(update: Update, context: CallbackContext) -> None:
         InlineKeyboardButton(
             text=f"✅ Yandex" if 'yandex' in preferences else "❌ Yandex",
             callback_data=f"toggle_yandex"
+        ),
+        InlineKeyboardButton(
+            text=f"✅ Spotify" if 'spotify' in preferences else "❌ Spotify",
+            callback_data=f"toggle_spotify"
         ),
         InlineKeyboardButton(
             text=f"✅ Raw MP3" if 'raw' in preferences else "❌ Raw MP3",
@@ -104,7 +118,7 @@ async def find(update: Update, context: CallbackContext) -> None:
 
 async def process_search(update: Update, context: CallbackContext, search_query: str) -> None:
     user_id = str(update.effective_user.id)
-    preferences = user_preferences.get(user_id, ['yt', 'yandex', 'raw'])
+    preferences = user_preferences.get(user_id, ['yt', 'yandex', 'spotify', 'raw'])
 
     # Check if input is a URL
     is_url = search_query.startswith(('http://', 'https://'))
@@ -122,6 +136,8 @@ async def process_search(update: Update, context: CallbackContext, search_query:
                 song_info = get_yt_song_info(search_query)
             elif 'music.yandex.ru' in search_query:
                 song_info = get_yandex_song_info(search_query)
+            elif 'spotify.com' in search_query:
+                song_info = get_spotify_song_info(search_query)
                 
             # Check if we got a valid response
             if isinstance(song_info, dict) and 'title' in song_info and 'artist' in song_info:
@@ -156,7 +172,9 @@ async def process_search(update: Update, context: CallbackContext, search_query:
                 response.append("Yandex: Service unavailable in your region due to legal restrictions")
             else:
                 response.append(f"Yandex: Error - {error_msg}")
-    
+    if 'spotify' in preferences:
+            spotify_link = get_spotify_song_link(search_query)
+            response.append(f"Spotify: {spotify_link}")
     # if 'raw' in preferences:
     #     if not yt_link:
     #         response.append("No results found for raw MP3.")
